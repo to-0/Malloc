@@ -52,10 +52,84 @@ void* memory_alloc(unsigned int size) {
 	return p;
 }
 int memory_free(void* valid_ptr) {
-
+	printf("\nSom vo free\n");
+	int* p = valid_ptr; //p sluzi potom aj ako next_fb za miestom valid_ptr
+	int size_block = *p >> 1;
+	int free = (*(int *)valid_ptr) & 1;
+	int* prev_fb=NULL;
+	//hladam free blok TOTO MOZEM NAHRADIT AK DAM NA ZACIATOK POLA UKAZOVATEL NA PRVY FREE
+	while (free != 0 && p != NULL) {
+		printf("\nP:%p\n", p);
+		size_block = *p >> 1;
+		printf("Size block:%d\n", size_block);
+		p = ((char*)p + (4 + size_block)); //tu to musim pretypovat na char aby som sa posuval po 1B, keby to bol int skacem +1 o 4B, posledna +1 lebo potrebujem vyskocit este z toho ukazovatela na int
+		if (*p == 0)break; //som na konci pola
+		printf("hladam som na:%p\n", p);
+		free = *p & 1;
+	}
+	//hladam 2 vedlajsie free bloky z oboch stran
+	while (*p != 0 || p<valid_ptr) {
+		prev_fb = p;
+		p = *(p + 1);
+	}
+	if (p != 0) p = *(p + 1);
+	
+	if (prev_fb != NULL) {
+		int size = *prev_fb >> 1;
+		int* is_nextl = ((char*)prev_fb + (4 + size)); //je najblizsi free blok z lava hned vedla bloku ktory idem uvolnovat?
+		int* is_nextr = ((char*)p + (4 + size));
+		if (is_nextl == valid_ptr || is_nextr==p  ) { //ak je vedla neho aspon jeden free blok
+			if (is_nextl == valid_ptr && is_nextr == p) {
+				if (*p != 0) {//ak ale free blok neni koniec pamate
+					size = size + (*(int*)valid_ptr >> 1) + 4 + (*(int*)p >> 1) + 4;
+					*(prev_fb + 1) = *(p + 1);
+				}
+				else { //ak je to koniec pamate
+					size = size + (*(int*)valid_ptr >> 1) + 4;
+					*(prev_fb + 1) = p;
+				}
+				*(int*)valid_ptr = *(int*)valid_ptr & ~1;
+				*(prev_fb) = size << 1;
+			}
+			else { //ak nie su naraz vedla seba, ale ma jeden vedla seba
+				if (is_nextl == valid_ptr) {
+					size = size + (*(int*)valid_ptr >> 1) + 4;
+					*(prev_fb + 1) = p;
+					*(int*)valid_ptr = *(int*)valid_ptr & ~1;
+					*(prev_fb) = size << 1;
+				}
+				if (is_nextr == p) {
+					if (*p != 0) {
+						*(int*)valid_ptr = *(int*)valid_ptr >> 1 + *p >> 1+4;
+						*(int*)valid_ptr = *(int*)valid_ptr & ~1;
+						*((int*)valid_ptr+1) = *(p+1);
+					}
+					else {
+						*(int*)valid_ptr = *(int*)valid_ptr >> 1;
+						*(int*)valid_ptr = *(int*)valid_ptr & ~1;
+						*((int*)valid_ptr + 1) = p;
+					}
+				}
+			}
+		}
+		else { //ak neni vedla neho ziadny free block priamo ze by sa vedeli spojit
+			*(prev_fb + 1) = valid_ptr;
+			*(int*)valid_ptr = *(int*)valid_ptr & ~1;
+			*((int*)valid_ptr + 1) = p;
+		}
+		
+	}
+	return 1;
 }
 int memory_check(void* ptr) {
-
+	int* point = pam;
+	while (point != NULL && point!=ptr) {
+		int free = *point & 1;
+		if (point == ptr && free) return 1;
+		int size = *point >> 1;
+		point = ((char*)point + (4 + size));
+	}
+	return 0;
 }
 void memory_init(void* ptr, unsigned int size) {
 	int real_size = size - sizeof(int) - sizeof(int*);
@@ -66,6 +140,7 @@ void memory_init(void* ptr, unsigned int size) {
 	*foot = NULL;
 	printf("Koncim init: foot: %p next_free: %p\n",foot,*((int *)ptr+1));
 }
+
 
 int main()
 {
@@ -110,6 +185,7 @@ int main()
 	printf("\n%p\n", &pamat[99]);
 	char* p3 = (char*)memory_alloc(150);
 	printf("\np3:%p", p3);
+	memory_free(p1);
 	return 0;
 }
 
